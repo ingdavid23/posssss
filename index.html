@@ -1119,9 +1119,10 @@ function render() {
     case 'login': renderLogin(); break;
     case 'admin-dashboard': renderAdminShell(renderDashboard); break;
     case 'admin-inventory': renderAdminShell(renderInventory); break;
-    // 👇 ESTA ES LA LÍNEA NUEVA 👇
     case 'admin-departments': renderAdminShell(renderDepartments); break;
+    case 'admin-clients': renderAdminShell(renderClients); break; // <--- ¡AGREGA ESTA LÍNEA!
     case 'admin-sales': renderAdminShell(renderSalesReport); break;
+    // ...
     // ... el resto sigue igual
     case 'admin-finance': renderAdminShell(renderFinance); break;
     case 'admin-invoicing': renderAdminShell(renderInvoicing); break; // <--- NUEVA LÍNEA
@@ -1208,11 +1209,11 @@ function renderLogin() {
 
 // ========== ADMIN SHELL ==========
 function renderAdminShell(contentFn) {
-  const allNavItems = [
+    const allNavItems = [
     { id:'admin-dashboard', icon:'layout-dashboard', label:'Dashboard' },
     { id:'admin-inventory', icon:'package', label:'Inventario' },
-    // 👇 ESTA ES LA LÍNEA NUEVA 👇
     { id:'admin-departments', icon:'layers', label:'Departamentos' }, 
+    { id:'admin-clients', icon:'contact', label:'Cartera de Clientes' }, // <--- ¡AGREGA ESTA LÍNEA!
     { id:'admin-sales', icon:'receipt', label:'Ventas y Reportes' },
     { id:'admin-finance', icon:'wallet', label:'Finanzas' },
     { id:'admin-invoicing', icon:'file-text', label:'Facturación' }, 
@@ -3339,7 +3340,9 @@ function renderUsersAdmin(container) {
           <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 bg-card/30 p-3 rounded-xl border border-card">
             
             <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" name="u-perm" value="admin-departments" class="w-4 h-4 text-accent" checked> <span class="text-sm font-medium">Departamentos</span></label>
+            <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" name="u-perm" value="admin-clients" class="w-4 h-4 text-accent" checked> <span class="text-sm font-medium">Clientes</span></label> <!-- <--- ¡AGREGA ESTA LÍNEA! -->
             <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" name="u-perm" value="admin-dashboard" class="w-4 h-4 text-accent" checked> <span class="text-sm font-medium">Dashboard</span></label>
+            <!-- ... -->
             <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" name="u-perm" value="admin-inventory" class="w-4 h-4 text-accent" checked> <span class="text-sm font-medium">Inventario</span></label>
             <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" name="u-perm" value="admin-sales" class="w-4 h-4 text-accent" checked> <span class="text-sm font-medium">Ventas/Reportes</span></label>
             <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" name="u-perm" value="admin-finance" class="w-4 h-4 text-accent" checked> <span class="text-sm font-medium">Finanzas</span></label>
@@ -3391,7 +3394,8 @@ function renderUsersAdmin(container) {
       document.getElementById('u-role').dispatchEvent(new Event('change')); // Mostrar/Ocultar permisos
       
       // Agrega 'admin-departments' al inicio de esta lista
-      const allPerms = ['admin-departments', 'admin-dashboard', 'admin-inventory', 'admin-sales', 'admin-finance', 'admin-invoicing', 'admin-users', 'admin-settings'];
+      // Agrega 'admin-clients' a esta lista
+      const allPerms = ['admin-departments', 'admin-clients', 'admin-dashboard', 'admin-inventory', 'admin-sales', 'admin-finance', 'admin-invoicing', 'admin-users', 'admin-settings'];
       const userPerms = editingUser.raw && editingUser.raw.permissions ? editingUser.raw.permissions : allPerms;
       
       document.querySelectorAll('input[name="u-perm"]').forEach(cb => {
