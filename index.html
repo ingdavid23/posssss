@@ -1119,8 +1119,10 @@ function render() {
     case 'login': renderLogin(); break;
     case 'admin-dashboard': renderAdminShell(renderDashboard); break;
     case 'admin-inventory': renderAdminShell(renderInventory); break;
-    case 'admin-clients': renderAdminShell(renderClients); break; // <-- NUEVA LÍNEA
+    // 👇 ESTA ES LA LÍNEA NUEVA 👇
+    case 'admin-departments': renderAdminShell(renderDepartments); break;
     case 'admin-sales': renderAdminShell(renderSalesReport); break;
+    // ... el resto sigue igual
     case 'admin-finance': renderAdminShell(renderFinance); break;
     case 'admin-invoicing': renderAdminShell(renderInvoicing); break; // <--- NUEVA LÍNEA
     case 'admin-users': renderAdminShell(renderUsersAdmin); break;
@@ -1209,7 +1211,8 @@ function renderAdminShell(contentFn) {
   const allNavItems = [
     { id:'admin-dashboard', icon:'layout-dashboard', label:'Dashboard' },
     { id:'admin-inventory', icon:'package', label:'Inventario' },
-    { id:'admin-clients', icon:'contact', label:'Cartera de Clientes' }, // <-- NUEVA LÍNEA
+    // 👇 ESTA ES LA LÍNEA NUEVA 👇
+    { id:'admin-departments', icon:'layers', label:'Departamentos' }, 
     { id:'admin-sales', icon:'receipt', label:'Ventas y Reportes' },
     { id:'admin-finance', icon:'wallet', label:'Finanzas' },
     { id:'admin-invoicing', icon:'file-text', label:'Facturación' }, 
@@ -3331,12 +3334,13 @@ function renderUsersAdmin(container) {
         </div>
         
         <!-- NUEVO BLOQUE DE PERMISOS -->
-        <div class="w-full mt-2 hidden border-t border-card pt-3" id="permissions-container">
+       <div class="w-full mt-2 hidden border-t border-card pt-3" id="permissions-container">
           <label class="block text-xs text-muted mb-2 font-bold uppercase">Permisos de Administrador (Pestañas Visibles)</label>
           <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 bg-card/30 p-3 rounded-xl border border-card">
+            
+            <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" name="u-perm" value="admin-departments" class="w-4 h-4 text-accent" checked> <span class="text-sm font-medium">Departamentos</span></label>
             <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" name="u-perm" value="admin-dashboard" class="w-4 h-4 text-accent" checked> <span class="text-sm font-medium">Dashboard</span></label>
             <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" name="u-perm" value="admin-inventory" class="w-4 h-4 text-accent" checked> <span class="text-sm font-medium">Inventario</span></label>
-            <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" name="u-perm" value="admin-clients" class="w-4 h-4 text-accent" checked> <span class="text-sm font-medium">Clientes</span></label>
             <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" name="u-perm" value="admin-sales" class="w-4 h-4 text-accent" checked> <span class="text-sm font-medium">Ventas/Reportes</span></label>
             <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" name="u-perm" value="admin-finance" class="w-4 h-4 text-accent" checked> <span class="text-sm font-medium">Finanzas</span></label>
             <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" name="u-perm" value="admin-invoicing" class="w-4 h-4 text-accent" checked> <span class="text-sm font-medium">Facturación</span></label>
@@ -3386,7 +3390,8 @@ function renderUsersAdmin(container) {
       document.getElementById('u-role').value = editingUser.role;
       document.getElementById('u-role').dispatchEvent(new Event('change')); // Mostrar/Ocultar permisos
       
-      const allPerms = ['admin-dashboard', 'admin-inventory', 'admin-clients', 'admin-sales', 'admin-finance', 'admin-invoicing', 'admin-users', 'admin-settings'];
+      // Agrega 'admin-departments' al inicio de esta lista
+      const allPerms = ['admin-departments', 'admin-dashboard', 'admin-inventory', 'admin-sales', 'admin-finance', 'admin-invoicing', 'admin-users', 'admin-settings'];
       const userPerms = editingUser.raw && editingUser.raw.permissions ? editingUser.raw.permissions : allPerms;
       
       document.querySelectorAll('input[name="u-perm"]').forEach(cb => {
@@ -4802,6 +4807,155 @@ const coleccionesCatalogos = ['productos', 'usuarios', 'categorias', 'configurac
   window.addEventListener('offline', updateNetworkStatus);
 
   render();
+
+  // ========== DEPARTAMENTOS (INGRESOS POR CATEGORÍA) ==========
+window.deptSpecificDate = window.deptSpecificDate || (function(){
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+})();
+
+async function renderDepartments(container) {
+    container.innerHTML = `<div class="flex flex-col items-center justify-center h-64 text-muted fade-in"><i data-lucide="loader" class="w-8 h-8 animate-spin text-accent mb-4"></i><p class="font-semibold text-sm">Calculando ingresos por departamento...</p></div>`;
+    lucide.createIcons();
+
+    const [yStr, mStr, dStr] = window.deptSpecificDate.split('-');
+    const y = parseInt(yStr);
+    const m = parseInt(mStr) - 1;
+
+    await window.cargarMesFirebase(y, m);
+
+    const sales = records('sale');
+    const products = records('product');
+    const categories = records('category');
+
+    // 1. Filtrar ventas exactas del día seleccionado
+    const specificDaySales = sales.filter(s => {
+        if(!s.date) return false;
+        const d = new Date(s.date);
+        const localDateString = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        return localDateString === window.deptSpecificDate;
+    });
+
+    const categoryTotals = {};
+
+    // 2. Inicializamos las categorías existentes
+    categories.forEach(c => categoryTotals[c.name] = 0);
+    categoryTotals['Granel'] = 0; 
+    categoryTotals['Sin Categoría'] = 0;
+
+   // 3. Calculamos totales buscando a qué categoría pertenece cada producto vendido
+   specificDaySales.forEach(s => {
+        const items = s.items ? s.items : [s];
+        items.forEach(item => {
+            let catName = 'Sin Categoría';
+            const itemTotal = Number(item.total) || (Number(item.sell_price) * Number(item.quantity||1)) || 0;
+
+            if (String(item.id).startsWith('bulk_') || (item.name && item.name.includes('(Granel)'))) {
+                catName = 'Granel';
+            } else if (String(item.id).startsWith('desc_') || (item.name && item.name.toLowerCase().includes('descuento'))) {
+                catName = 'Descuentos'; // <-- ¡NUEVO! Detectamos los descuentos
+            } else {
+                const prodRef = products.find(p => p.id === item.id || p.name === item.name);
+                if (prodRef && prodRef.category) catName = prodRef.category;
+            }
+            if(categoryTotals[catName] === undefined) categoryTotals[catName] = 0;
+            categoryTotals[catName] += itemTotal;
+        });
+    });
+
+    // 4. Limpiamos las que están en 0 y ordenamos (Permitimos totales distintos de 0 para ver negativos)
+    const sortedCats = Object.entries(categoryTotals)
+        .filter(([name, total]) => total !== 0 || categories.find(c=>c.name===name) || name==='Granel')
+        .sort((a, b) => b[1] - a[1]); // Ordenar de mayor a menor
+
+    const dateObj = new Date(y, m, parseInt(dStr));
+    const dateDisplay = dateObj.toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' }).toUpperCase();
+    
+    const todayStr = (function(){ const t=new Date(); return `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`; })();
+    const isToday = window.deptSpecificDate === todayStr;
+
+    // 5. Dibujar Interfaz HTML
+    container.innerHTML = `
+    <div class="fade-in space-y-6 pb-10 max-w-5xl mx-auto">
+       <div class="flex flex-wrap items-center justify-between gap-3">
+            <h2 class="text-xl font-bold">Departamentos</h2>
+            
+            <div class="flex items-center gap-1 bg-surface border border-card rounded-lg p-1 shadow-sm">
+                <button type="button" id="dept-prev" class="p-1.5 hover:bg-card rounded transition text-muted hover:text-txt z-10 relative" title="Día anterior"><i data-lucide="chevron-left" class="w-4 h-4 pointer-events-none"></i></button>
+                
+                <div class="text-sm font-bold text-center uppercase tracking-wider text-txt w-40 flex justify-center items-center gap-1.5 relative">
+                    <input type="date" id="dept-date-picker" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full" value="${window.deptSpecificDate}">
+                    ${dateDisplay} ${isToday ? '<span class="bg-success/20 text-success text-[10px] px-1.5 py-0.5 rounded-full">HOY</span>' : ''}
+                </div>
+                
+                <button type="button" id="dept-next" class="p-1.5 hover:bg-card rounded transition text-muted hover:text-txt z-10 relative ${isToday ? 'opacity-30 cursor-not-allowed' : ''}" title="Día siguiente"><i data-lucide="chevron-right" class="w-4 h-4 pointer-events-none"></i></button>
+            </div>
+        </div>
+
+        <div class="bg-surface rounded-xl border border-card shadow-sm overflow-hidden flex flex-col">
+            <div class="p-4 border-b border-card font-semibold text-sm text-txt flex items-center gap-2 bg-card/10">
+                <i data-lucide="tags" class="w-4 h-4 text-accent2"></i> Ingresos Diarios por Categoría
+            </div>
+            
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="text-muted text-left border-b border-card bg-surface">
+                            <th class="p-4 font-semibold w-2/3">Categoría</th>
+                            <th class="p-4 font-semibold text-right">Total Vendido</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${sortedCats.length > 0 ? sortedCats.map(([catName, total]) => `
+                            <tr class="border-b border-card/50 hover:bg-card/30 transition bg-surface">
+                                <td class="p-4 font-medium flex items-center gap-3">
+                                    <i data-lucide="${catName === 'Descuentos' ? 'tag-minus' : 'tag'}" class="w-4 h-4 text-muted"></i> 
+                                    <span class="text-txt uppercase text-[13px] tracking-wide">${catName}</span>
+                                </td>
+                                <td class="p-4 font-bold text-right ${total > 0 ? 'text-success' : total < 0 ? 'text-danger' : 'text-muted/50'} text-base">
+                                    ${currency(total)}
+                                </td>
+                            </tr>
+                        `).join('') : `
+                            <tr><td colspan="2" class="p-10 text-center text-muted">No hay datos para esta fecha</td></tr>
+                        `}
+                    </tbody>
+                    <tfoot class="bg-card/20 border-t border-card">
+                        <tr>
+                            <td class="p-4 font-bold text-right text-muted">TOTAL DEL DÍA:</td>
+                            <td class="p-4 font-black text-right text-success text-xl">${currency(Object.values(categoryTotals).reduce((a,b)=>a+b,0))}</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </div>`;
+
+    lucide.createIcons();
+
+    // 6. Lógica de Navegación del Calendario
+    const updateDate = (newDateStr) => {
+        window.deptSpecificDate = newDateStr;
+        renderDepartments(container);
+    };
+
+    document.getElementById('dept-date-picker').onchange = (e) => {
+        if(e.target.value) updateDate(e.target.value);
+    };
+
+    document.getElementById('dept-prev').onclick = () => {
+        const d = new Date(y, m, parseInt(dStr));
+        d.setDate(d.getDate() - 1);
+        updateDate(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`);
+    };
+
+    document.getElementById('dept-next').onclick = () => {
+        if (window.deptSpecificDate === todayStr) return; // Bloquear botón hacia el futuro
+        const d = new Date(y, m, parseInt(dStr));
+        d.setDate(d.getDate() + 1);
+        updateDate(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`);
+    };
+}
 
 </script>
  </body>
