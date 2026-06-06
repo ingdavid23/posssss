@@ -3468,9 +3468,10 @@ function renderUsersAdmin(container) {
           <label class="block text-xs text-muted mb-1">Contraseña</label>
           <input id="u-pass" type="text" class="bg-card border border-card rounded-lg px-3 py-2 text-sm focus:border-accent focus:outline-none" placeholder="Contraseña *" required>
         </div>
-        <div>
+       <div>
           <label class="block text-xs text-muted mb-1">Rol</label>
           <select id="u-role" class="bg-card border border-card rounded-lg px-3 py-2 text-sm focus:border-accent focus:outline-none">
+            <option value="">Selecciona el rol...</option>
             <option value="cashier">Cajero</option>
             <option value="admin">Administrador</option>
           </select>
@@ -3497,6 +3498,19 @@ function renderUsersAdmin(container) {
             <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" name="u-perm" value="admin-settings" class="w-4 h-4 text-accent" checked> <span class="text-sm font-medium">Configuración</span></label>
           </div>
         </div>
+
+      <!-- checklist de categorías -->
+<div id="category-perms-container" class="w-full mt-4 border-t border-card pt-3 hidden">
+  <label class="block text-xs text-muted mb-2 font-bold uppercase">Categorías Permitidas para el Cajero</label>
+  <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 bg-card/30 p-3 rounded-xl border border-card">
+    ${records('category').map(c => `
+      <label class="flex items-center gap-2 cursor-pointer">
+        <input type="checkbox" name="u-cat-perm" value="${c.name}" class="w-4 h-4 text-accent"> 
+        <span class="text-sm">${c.name}</span>
+      </label>
+    `).join('')}
+  </div>
+</div>
       </form>
     </div>
     <div class="bg-surface rounded-xl border border-card overflow-x-auto">
@@ -3524,10 +3538,22 @@ function renderUsersAdmin(container) {
     </div>
   </div>`;
 
+  // Cambia la lógica del evento onchange así:
   document.getElementById('u-role').onchange = (e) => {
     const permContainer = document.getElementById('permissions-container');
-    if (e.target.value === 'admin') permContainer.classList.remove('hidden');
-    else permContainer.classList.add('hidden');
+    const catContainer = document.getElementById('category-perms-container'); // Asegúrate de envolver tu checklist en este ID
+    
+    const rol = e.target.value;
+    if (rol === 'admin') {
+        permContainer.classList.remove('hidden');
+        catContainer.classList.add('hidden'); // Admin ve todo, no necesita checklist
+    } else if (rol === 'cashier') {
+        permContainer.classList.add('hidden');
+        catContainer.classList.remove('hidden');
+    } else {
+        permContainer.classList.add('hidden');
+        catContainer.classList.add('hidden');
+    }
   };
 
   window.editUser = (username) => {
@@ -3537,30 +3563,24 @@ function renderUsersAdmin(container) {
       document.getElementById('u-user').value = editingUser.username;
       document.getElementById('u-pass').value = editingUser.password;
       document.getElementById('u-role').value = editingUser.role;
-      document.getElementById('u-role').dispatchEvent(new Event('change')); // Mostrar/Ocultar permisos
+      document.getElementById('u-role').dispatchEvent(new Event('change'));
       
-      // Agrega 'admin-departments' al inicio de esta lista
-      // Agrega 'admin-clients' a esta lista
+      // Marcar permisos de pestañas
       const allPerms = ['admin-departments', 'admin-clients', 'admin-dashboard', 'admin-inventory', 'admin-sales', 'admin-finance', 'admin-invoicing', 'admin-users', 'admin-settings'];
       const userPerms = editingUser.raw && editingUser.raw.permissions ? editingUser.raw.permissions : allPerms;
-      
       document.querySelectorAll('input[name="u-perm"]').forEach(cb => {
           cb.checked = userPerms.includes(cb.value);
       });
 
+      // AQUÍ MARCAMOS LAS CATEGORÍAS QUE YA TENÍA GUARDADAS EL USUARIO
+      const userCats = editingUser.raw && editingUser.raw.allowedCategories ? editingUser.raw.allowedCategories : [];
+      document.querySelectorAll('input[name="u-cat-perm"]').forEach(cb => {
+          cb.checked = userCats.includes(cb.value);
+      });
+      // -------------------------------------------------------------
+
       document.getElementById('u-form-title').textContent = 'Editar Usuario';
-      document.getElementById('u-btn').textContent = 'Actualizar';
-      document.getElementById('u-cancel').classList.remove('hidden');
-      
-      if (editingUser.isDefault) {
-        document.getElementById('u-user').readOnly = true;
-        document.getElementById('u-user').classList.add('opacity-50', 'cursor-not-allowed');
-        showToast('Usuario fijo: Modifica solo el nombre, rol o contraseña.', 'info');
-      } else {
-        document.getElementById('u-user').readOnly = false;
-        document.getElementById('u-user').classList.remove('opacity-50', 'cursor-not-allowed');
-      }
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      // ... resto de la función
     }
   };
 
@@ -3609,17 +3629,38 @@ function renderUsersAdmin(container) {
     btn.disabled = true; btn.textContent = 'Guardando...';
 
     // Jalar permisos solo si es admin
-    const permissions = role === 'admin' 
-        ? Array.from(document.querySelectorAll('input[name="u-perm"]:checked')).map(cb => cb.value)
-        : [];
+    // ... dentro de la función onsubmit
+  // Jalar permisos solo si es admin
+  const permissions = role === 'admin' 
+      ? Array.from(document.querySelectorAll('input[name="u-perm"]:checked')).map(cb => cb.value)
+      : [];
 
-    const data = {
-      type: 'user', name: username, code: pass, category: '', buy_price: 0, sell_price: 0,
-      stock: 0, min_stock: 0, quantity: 0, total: 0, payment_method: '', cashier: '',
-      date: now(), amount: 0, description: name, status: role,
-      initial_cash: 0, final_cash: 0, sales_total: 0,
-      permissions: permissions // <--- AQUI GUARDAMOS LOS PERMISOS EN BD
-    };
+  // AQUÍ CAPTURAMOS EL CHECKLIST DE CATEGORÍAS
+  const allowedCategories = Array.from(document.querySelectorAll('input[name="u-cat-perm"]:checked')).map(cb => cb.value);
+
+  const data = {
+    type: 'user', 
+    name: username, 
+    code: pass, 
+    category: '', 
+    buy_price: 0, 
+    sell_price: 0,
+    stock: 0, 
+    min_stock: 0, 
+    quantity: 0, 
+    total: 0, 
+    payment_method: '', 
+    cashier: '',
+    date: now(), 
+    amount: 0, 
+    description: name, 
+    status: role,
+    initial_cash: 0, 
+    final_cash: 0, 
+    sales_total: 0,
+    permissions: permissions,
+    allowedCategories: allowedCategories // <--- ¡AQUÍ SE GUARDA EN LA BD!
+  };
 
     if (editingUser) {
       if (editingUser.raw) {
@@ -4052,19 +4093,26 @@ function renderCashierPOS() {
   }
 
   function renderPosCategories() {
-    const container = document.getElementById('pos-categories');
-    if (!container) return;
+  const container = document.getElementById('pos-categories');
+  if (!container) return;
 
-    const categories = records('category');
-    const allCats = [{id: 'all', name: 'Todas'}, ...categories];
+  const allCategories = records('category');
+  
+  // Filtramos: si el usuario es admin ve todo, si es cajero solo sus permitidas
+  // En tu función renderPosCategories() en cashier-pos:
+  const userAllowed = currentUser.raw?.allowedCategories || [];
+  const categories = (currentUser.role === 'admin') 
+    ? allCategories 
+    : allCategories.filter(c => userAllowed.includes(c.name));
 
-    container.innerHTML = allCats.map(c => {
-       const val = c.id === 'all' ? '' : c.name;
-       const isSelected = currentPosCategory === val;
-       // CAMBIO AQUÍ: Blancos inactivos, magenta brillante activos
-       const bgClass = isSelected ? 'bg-accent text-white font-bold shadow-md' : 'bg-surface text-txt hover:bg-card border border-card shadow-sm';
-       return `<button data-cat-filter="${val}" class="whitespace-nowrap px-4 py-2 rounded-xl text-sm transition ${bgClass}">${c.name}</button>`;
-    }).join('');
+  const allCats = [{id: 'all', name: 'Todas'}, ...categories];
+
+  container.innerHTML = allCats.map(c => {
+     const val = c.id === 'all' ? '' : c.name;
+     const isSelected = currentPosCategory === val;
+     const bgClass = isSelected ? 'bg-accent text-white font-bold shadow-md' : 'bg-surface text-txt hover:bg-card border border-card shadow-sm';
+     return `<button data-cat-filter="${val}" class="whitespace-nowrap px-4 py-2 rounded-xl text-sm transition ${bgClass}">${c.name}</button>`;
+  }).join('');
 
     container.querySelectorAll('[data-cat-filter]').forEach(btn => {
        btn.onclick = () => {
